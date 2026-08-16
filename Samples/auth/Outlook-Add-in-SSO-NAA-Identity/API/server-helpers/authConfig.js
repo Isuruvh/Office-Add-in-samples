@@ -3,7 +3,7 @@
 
 const authConfig = {
     credentials: {
-        clientID: "Enter_API_Application_Id_Here"
+        clientID: "bb1874a8-699c-400a-959d-25671fe84a1b"
     },
     metadata: {
         authority: "login.microsoftonline.com",

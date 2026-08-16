@@ -1,223 +1,225 @@
----
-page_type: sample
-urlFragment: outlook-add-in-sso-naa-identity
-products:
-  - m365
-  - office
-  - office-outlook
-languages:
-  - javascript
-extensions:
-  contentType: samples
-  technologies:
-    - Add-ins
-  createdDate: "03/24/2025 10:00:00 AM"
-description: "This sample shows how to send identity claims across the network to resources like a web API service."
----
+# Outlook SSO To-Do Add-in
 
-# Send identity claims to resources using nested app authentication (NAA) and SSO
+This project is a personal Outlook add-in built around the Microsoft sample for SSO and Nested App Authentication (NAA). It allows a user to sign in through Microsoft Entra ID, request an access token, and send that token to a protected backend API to manage a personal to-do list tied to the signed-in user.
 
-The scenario for this sample is that you need to send the signed-in user's identity claims (such as name, email, or a unique ID) to a resource such as a database. This enables you to associate and track data for each user in the resource. This sample replaces an obsolete pattern for legacy Exchange Online tokens. The obsolete pattern is that Exchange Online identity tokens were passed over the network to share user identity. Using Entra ID tokens, the ID token must never be passed by your Outlook add-in over the network to any resource. It can only be used within the context of the add-in (such as the task pane) itself. To pass user identity over the network, you use the Entra ID access token which contains the identity claims.
+This project is intended as a practical base for ongoing experimentation and future work with Outlook add-ins, Microsoft identity, and secure API access patterns.
 
-This sample shows how to implement a todo list for multiple users with an Outlook add-in.
+## Overview
 
-1. The Outlook add-in (SPA client) uses the MSAL.js library to obtain an access token from Microsoft Entra ID. The MSAL.js library returns an ID token and access token.
-1. The access token is passed in a web request to a protected web API service. The web request validates the access token and confirms the user has permissions to perform the action in the API. The access token contains any identity claims the web API needs.
+The add-in is made of two main parts:
 
-![A diagram showing the Outlook add-in getting an access token from Microsoft Entra ID and calling the protected web API with the access token.](./images/architecture-diagram.png)
+- SPA client: the Outlook task pane UI built with JavaScript/TypeScript
+- API backend: a Node.js Express server that validates the access token and stores/retrieves user-specific tasks
 
-## Applies to
+The overall flow is:
 
-- Outlook on Windows (new and classic), Mac, mobile, and on the web.
+1. User signs in to the Outlook add-in.
+2. The client requests an Entra ID access token using MSAL.
+3. The token is used to call the protected backend API.
+4. The API validates the token and returns data for the current user only.
+5. Tasks are stored and retrieved per user using the authenticated identity.
+
+## Purpose
+
+This project demonstrates how to:
+
+- use Microsoft SSO in an Outlook add-in
+- request delegated access tokens for a protected API
+- validate tokens on the server side
+- keep data scoped to the signed-in user
+- build a practical to-do list add-in for Outlook
+
+## Features
+
+- Outlook task pane experience
+- Microsoft Entra ID sign-in
+- Access token acquisition using MSAL
+- Secure API calls with access tokens
+- User-scoped to-do list operations
+- Create, read, and delete tasks
+- Backend token validation with JWT checks
+
+## Tech Stack
+
+- Outlook add-ins
+- JavaScript / TypeScript
+- Node.js
+- Express.js
+- Microsoft Authentication Library (MSAL)
+- Microsoft Entra ID
+- LowDB for local data storage in the sample
+
+## Project Structure
+
+```text
+Outlook-Add-in-SSO-NAA-Identity/
+├── API/
+│   ├── app.js
+│   ├── package.json
+│   ├── server-helpers/
+│   ├── db/
+│   └── bin/
+├── SPA/
+│   ├── package.json
+│   ├── manifest.xml
+│   ├── src/
+│   └── webpack.config.js
+├── images/
+├── README.md
+├── .gitignore
+└── package-lock.json
+```
 
 ## Prerequisites
 
-- Office connected to a Microsoft 365 subscription (including Office on the web).
-- [Node.js](https://nodejs.org/) (latest recommended version).
-- [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) version 8 or greater.
+Before running this project, make sure you have:
 
-## Register the sample applications with your Microsoft Entra tenant
+- Microsoft 365 account with Outlook access
+- Outlook desktop or Outlook on the web for testing
+- Node.js installed
+- npm installed
+- Azure / Microsoft Entra app registration access
+- Permission to sideload Outlook add-ins in your environment
 
-### Create the app registration
+## Microsoft Entra Setup
 
-The web API service is a Node.js server that requires an application registration to authorize calls to the todo list database. Also the Outlook add-in will require app registration to request access tokens. Although you can create two app registrations for the API service and the add-in client code, this sample combines both into a single app registration to keep it simple.
+You need to configure an Entra app registration for the sample.
 
-1. To register your app, go to the [Azure portal - App registrations](https://go.microsoft.com/fwlink/?linkid=2083908) page.
-1. Sign in with the **_admin_** credentials to your Microsoft 365 tenancy. For example, **MyName@contoso.onmicrosoft.com**.
-1. Select **New registration**. On the **Register an application** page, set the values as follows.
+### Required configuration
 
-   - Set **Name** to `Contoso-Outlook-Identity-Sample`.
-   - Set **Supported account types** to **Accounts in any organizational directory (Any Microsoft Entra ID tenant - Multitenant) and personal Microsoft accounts (e.g. Skype, Xbox)**.
-   - Select **Register**.
+- Register an application in Microsoft Entra ID
+- Expose an API and define delegated scopes such as:
+  - `Todolist.Read`
+  - `Todolist.ReadWrite`
+- Add the app as a client application for itself if required
+- Add redirect URIs for local development, such as:
+  - `http://localhost:3000`
+  - `http://localhost:3000/redirect`
+  - `brk-multihub://localhost:3000`
+- Ensure the app manifest has `requestedAccessTokenVersion` set to `2`
 
-1. In the **Overview** blade, find and note the **Application (client) ID** and **Directory (tenant) ID**. Save these values to use in the project files later in these steps.
-1. In the app's registration screen, select **Manage > Expose an API** to open the page where you can publish the permission as an API for which client applications can obtain access tokens for. The first thing that we need to do is to declare the unique resource URI that the clients will be using to obtain access tokens for this API. To declare a resource URI(Application ID URI), follow the following steps:
+### Important configuration files
 
-    - Select **Add** next to the **Application ID URI** to generate a URI that is unique for this app.
+Update the application and tenant values in the project settings:
 
-        ![A screenshot showing to select Expose an API and then the Add link on the Expose an API page.](./images/expose-an-api.png)
+- `API/server-helpers/authConfig.js`
+- `SPA/src/taskpane/msalconfig.ts`
+- `SPA/src/taskpane/authConfig.ts`
 
-    - For this sample, accept the proposed **Application ID URI** (`api://{clientId}`) by selecting **Save**.
+Use the Application (client) ID and Directory (tenant) ID from your Entra app registration.
 
-    Read more about Application ID URI at [Validation differences by supported account types (signInAudience)](https://docs.microsoft.com/azure/active-directory/develop/supported-accounts-validation).
+## Local Development Setup
 
-### Publish delegated permissions
+### 1. Install API dependencies
 
-All APIs must publish a minimum of one scope, also called Delegated Permission, for the client apps to obtain an access token for a user successfully. To publish a scope, follow these steps:
-
-1. Select **Add a scope**.
-
-    ![A screenshot showing to select the Add a scope item on the Expose an API page.](./images/add-a-scope.png)
-
-1. Enter the following values.
-
-    - For **Scope name**, select `Todolist.Read`.
-    - Select **Admins and users** options for **Who can consent?**.
-    - For **Admin consent display name** enter `Todolist.Read`.
-    - For **Admin consent description** enter `Allows the app to read the signed-in user's files.`
-    - For **User consent display name** enter `Todolist.Read`.
-    - For **User consent description** enter a description. For example, `Allows the app to read your files.`
-    - For **State**, select **Enabled**.
-    - To save this scope, select the **Add scope** button.
-
-Repeat the previous steps to add a second scope named `Todolist.ReadWrite` along with descriptions that indicate the scope will read and write files.
-
-Your scopes should appear as shown in the following screenshot.
-
-![A screenshot showing the two scopes successfully list on the Expose an API page.](./images/scopes-added.png)
-
-### Pre-authorize the app registration
-
-You need to pre-authorize the app registration to allow calls to itself.
-
-1. In the same **Expose an API** pane, select **Add a client application**.
-1. Enter the client ID of this app registration which is found on the **Overview** page
-1. Select both authorized scopes and then select **Add application**.
-
-![A screenshot showing the client ID added to list of client applications.](./images/pre-authorized-client.png)
-
-### Add redirects
-
-1. In the app's registration screen, select the **Manage** > **Authentication** blade on the left pane.
-1. Select **Add a platform** and choose the **Single-page application** option.
-
-    ![select redirect platform](./images/add-platform.png)
-
-    1. In the **Redirect URI** section, enter the following redirect URI:
-        1. `http://localhost:3000`
-    1. Select **Configure**.
-    1. After the page updates with the new URI, select **Add URI** and add the following redirect URIs:
-        1. `http://localhost:3000/redirect`
-        1. `brk-multihub://localhost:3000`
-    1. To save your changes, select **Save**.
-
-    ![A screenshot showing the three redirect uris successfully listed on the Authentication page.](./images/redirect-uris-completed.png)
-
-Since this app signs-in users, you'll now proceed to select delegated permissions, which is required by apps signing-in users.
-
-1. In the app's registration screen, select the **API permissions** blade on the left pane. This opens the page where you add access to the APIs that your application needs.
-1. Select the **Add a permission** button, and choose the **APIs my organization uses** tab.
-1. In the list of APIs, choose the API `Contoso-Outlook-Identity-Sample`.
-  
-    ![A screenshot showing to select API permissions, Add a permission, APIs my organization uses, and then the Contoso-Outlook-Identity-Sample on the API permissions page.](./images/select-permissions.png)
-
-1. In the **Delegated permissions** section, select **Todolist.Read**, **Todolist.ReadWrite** in the list. Use the search box if necessary.
-1. Select the **Add permissions** button.
-
-Your permissions should appear as shown in the following screenshot.
-
-![A screenshot showing to select Delegated permissions, then select the Todolist.Read and Todolist.ReadWrite permissions.](./images/scopes-added-client.png)
-
-### Define the access token version
-
-The access token version can change if you chose an account type other than **Accounts in any organizational directory (Any Azure AD directory - Multitenant) and personal Microsoft accounts (e.g. Skype, Xbox)**. Use the following steps to ensure the access token version is correct for Office SSO usage.
-
-1. From the left pane, select **Manifest**.
-1. Enter **2** as the value for the **requestedAccessTokenVersion** property (in the **api** object).
-1. Select **Save**.
-
-### Configure the service app (API) to use your app registration
-
-Open the sample project in Visual Studio Code to configure the code. In the following steps, "ClientID" is the same as "Application ID" or "AppId".
-
-1. Open the `API/server-helpers/authConfig.js` file.
-1. Find the key `Enter_API_Application_Id_Here` and replace the existing value with the application ID (clientId) of `Contoso-Outlook-Identity-Sample` app copied from when you created the app registration earlier.
-1. Find the key `Enter_API_Application_Id_Here` and replace the existing value with the directory (tenant) ID of `Contoso-Outlook-Identity-Sample` app copied from when you created the app registration earlier.
-1. Save the file.
-
-### Configure the client app (SPA) to use your app registration
-
-Open the sample project in Visual Studio Code to configure the code.
-
-1. Open the `SPA/src/taskpane/msalconfig.ts` file.
-1. Find the key `Enter_Application_Client_Id_Here` and replace the existing value with the application ID (clientId) of `Contoso-Outlook-Identity-Sample`.
-1. Save the file.
-
-Next you need to add the API web server's application ID.
-
-1. Open the `SPA/src/taskpane/authConfig.ts` file.
-1. Find the key `Enter_API_Application_Id_Here` and replace the existing value with the application ID (clientId) of `Contoso-Outlook-Identity-Sample`.
-
-Note: If you chose to create a separate app registration for the API server, you'd use that client ID for `Enter_API_Application_Id_Here` placeholders.
-
-## Run the sample
-
-The following instructions sideload the sample in Outlook for Windows. To sideload on other platforms, see [Sideload Outlook add-ins for testing](https://learn.microsoft.com/office/dev/add-ins/outlook/sideload-outlook-add-ins-for-testing)
-
-Start the web API service. In a console window, go to the root project folder of the sample. Run the following commands.
-
-```console
-    cd API
-    npm install
-    npm start
+```bash
+cd API
+npm install
 ```
 
-Next, start and sideload the Outlook add-in. In a new console window, go to the root project folder of the sample. Run the following commands.
+### 2. Start the API server
 
-```console
-    cd SPA
-    npm install
-    npm start
+```bash
+npm start
 ```
 
-1. Open Outlook (if it isn't already opened) and sign in.
-1. Open an existing email item.
-1. On the ribbon for the email item, select the **Show Task Pane** button. This will open the task pane of the add-in.
-1. In the task pane, enter a new task in the text box, and select **Add**. You can enter multiple tasks.
-1. Select **Get todo list** to get the task list.
-1. You can also delete tasks in the list itself.
+The API runs locally and validates incoming access tokens and serves the to-do data endpoints.
 
-If you sign in as a different user, you'll get a list just for that user.
+### 3. Install SPA dependencies
 
-## About the code
+Open a second terminal:
 
-### Acquire a Token
-
-**Access Token** requests in **MSAL.js** are meant to be *per-resource-per-scope(s)*. This means that an **Access Token** requested for resource **A** with scope `scp1`:
-
-- cannot be used for accessing resource **A** with scope `scp2`, and,
-- cannot be used for accessing resource **B** of any scope.
-
-The intended recipient of an **Access Token** is represented by the `aud` claim; in case the value for the `aud` claim does not mach the resource APP ID URI, the token should be considered invalid. Likewise, the permissions that an Access Token grants is represented by the `scp` claim. See [Access Token claims](https://docs.microsoft.com/azure/active-directory/develop/access-tokens#payload-claims) for more information.
-
-### CORS settings
-
-For the purpose of the sample, **cross-origin resource sharing** (CORS) is enabled for **all** domains and methods, using the Express.js cors middleware. This is insecure and only used for demonstration purposes here. In production, you should modify this as to allow only the domains that you designate. If your web API is going to be hosted on **Azure App Service**, we recommend configuring CORS on the App Service itself. This is illustrated in [app.js](./API/app.js):
-
-```javascript
-const express = require('express');
-const cors = require('cors');
-
-const app = express();
-
-app.use(cors());
+```bash
+cd SPA
+npm install
 ```
 
-### Access token validation
+### 4. Start the add-in
 
-On the web API side, the **validateJwt** function in `/API/server-helpers/validation-helper.js` verifies the incoming access token's signature and validates it's payload against the `issuer` and `audience` claims.
+```bash
+npm start
+```
 
-For validation and debugging purposes, developers can decode **JWT**s (*JSON Web Tokens*) using [jwt.ms](https://jwt.ms).
+This launches the Outlook add-in in development mode.
+
+## Run in Outlook
+
+1. Open Outlook.
+2. Sign in with the same Microsoft 365 account used for the app registration.
+3. Open an email or item in Outlook.
+4. Launch the task pane for the add-in.
+5. Add or retrieve your tasks from the UI.
+
+## How the app works
+
+### Client side
+
+The Outlook add-in uses MSAL to obtain a token for the API resource. The token is requested for the resource and scopes needed by the backend.
+
+### Server side
+
+The Node.js API validates the token, checks audience and issuer claims, and then authorizes access to the to-do operations. Tasks are scoped to the signed-in user identity.
+
+## Security Notes
+
+This project is a sample and is meant for learning and development.
+
+Important points:
+
+- Do not expose tokens in logs or debug output.
+- Do not pass ID tokens across the network to a backend resource.
+- Only use access tokens for backend API validation.
+- In production, use tighter CORS policies and secure deployment controls.
+
+## Current Development Notes
+
+This project is a working sample for personal extension and testing. The default behavior is based on the official Microsoft sample, but this repository is intended to serve as a custom development sandbox for future Outlook SSO experiments.
+
+## Planned Improvements
+
+Possible future enhancements include:
+
+- better error handling and user feedback
+- improved UI styling and responsiveness
+- persistent storage with a real backend database
+- adding filtering and task categories
+- support for multiple Outlook scenarios beyond a basic to-do list
+- additional secure identity validation and logging
+
+## Troubleshooting
+
+### Add-in does not start
+
+- confirm Node.js and npm are installed
+- run `npm install` in both `API` and `SPA`
+- verify the app registration values are correct
+
+### Token request fails
+
+- check Entra app registration values
+- confirm redirect URIs match your local development setup
+- verify the required delegated permissions are granted
+
+### API returns unauthorized
+
+- confirm the access token is being sent correctly
+- validate the token's audience and issuer
+- check the app registration's resource and scope configuration
+
+## References
+
+- Microsoft Office add-ins documentation
+- Microsoft Entra ID documentation
+- Outlook add-in SSO and identity samples
+
+## License
+
+This project follows the licensing terms of the parent repository and applicable Microsoft sample usage guidelines. Check the repository root for license information.
+
+## Notes for Future Work
+
+This README is intentionally kept simple and practical so it can be reused as a personal project baseline. If you continue expanding the app, update this document as the solution evolves with architecture changes, security decisions, and feature improvements.
+
 
 ### Access to data
 

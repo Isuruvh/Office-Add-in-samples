@@ -23,7 +23,7 @@ type DialogEventMessage = { message: string; origin: string | undefined };
 type DialogEventError = { error: number };
 type DialogEventArg = DialogEventMessage | DialogEventError;
 
-const webApplicationID = "Enter_API_Application_Id_Here";
+const webApplicationID = "bb1874a8-699c-400a-959d-25671fe84a1b";
 
 /**
  * Contains the endpoints and scopes for obtaining an access token for protected web APIs. For more information, see:
